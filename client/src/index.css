@@ -1,0 +1,7 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0f1117; font-family: 'Inter', sans-serif; color: #c8cce8; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #161b27; }
+::-webkit-scrollbar-thumb { background: #7c6ef7; border-radius: 4px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
