@@ -3,6 +3,42 @@ import { useParams, useNavigate } from 'react-router-dom';
 import MessageBubble from '../components/MessageBubble';
 import { getHistory } from '../api/chatApi';
 
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: '#0f1117',
+    color: '#c8cce8',
+    padding: '24px'
+  },
+  container: {
+    maxWidth: '980px',
+    margin: '0 auto'
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '24px'
+  },
+  title: {
+    fontSize: '24px',
+    fontWeight: '700'
+  },
+  button: {
+    background: '#1a1f35',
+    border: '1px solid #2a2f45',
+    borderRadius: '10px',
+    color: '#c8cce8',
+    padding: '10px 16px',
+    cursor: 'pointer'
+  },
+  status: {
+    textAlign: 'center',
+    color: '#8890b5',
+    padding: '24px 0'
+  }
+};
+
 function HistoryPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,29 +60,26 @@ function HistoryPage() {
   }, [id]);
 
   return (
-    <div className="min-h-screen bg-bgMain p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-textPrimary text-2xl font-semibold">Chat History</h1>
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-2 bg-bgCard border border-borderColor text-textPrimary rounded-lg hover:bg-[#1e2540] transition-all duration-200"
-          >
+    <div style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Chat History</h1>
+          <button onClick={() => navigate('/')} style={styles.button}>
             Back to Chat
           </button>
         </div>
         {loading ? (
-          <div className="text-center text-textMuted">Loading history...</div>
+          <div style={styles.status}>Loading history...</div>
         ) : messages.length === 0 ? (
-          <div className="text-center text-textHint">No messages found</div>
+          <div style={styles.status}>No messages found</div>
         ) : (
-          <div className="space-y-4">
+          <div style={{ display: 'grid', gap: '18px' }}>
             {messages.map((message, index) => (
               <MessageBubble
                 key={index}
                 role={message.role}
                 text={message.text}
-                time={message.timestamp}
+                time={message.time}
               />
             ))}
           </div>

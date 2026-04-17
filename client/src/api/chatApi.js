@@ -1,9 +1,12 @@
 import axios from 'axios';
 
-const baseURL = 'http://localhost:5001';
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 const api = axios.create({
   baseURL,
-  timeout: 30000
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 api.interceptors.response.use(

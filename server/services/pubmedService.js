@@ -80,7 +80,7 @@ async function fetchPubMedArticles(expandedQuery, maxResults = 40) {
         ''
 
       return {
-        type: 'publication',
+        type: 'pubmed',
         title,
         abstract: abstractText.slice(0, 500),
         authors,

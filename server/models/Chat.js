@@ -9,6 +9,7 @@ const messageSchema = new mongoose.Schema({
 const chatSchema = new mongoose.Schema({
   disease: String,
   patientName: String,
+  location: String,
   messages: [messageSchema],
   createdAt: { type: Date, default: Date.now }
 })

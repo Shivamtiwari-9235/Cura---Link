@@ -2,6 +2,7 @@
 import SearchForm from '../components/SearchForm';
 import MessageBubble from '../components/MessageBubble';
 import SourceCard from '../components/SourceCard';
+import Toast from '../components/Toast';
 import { sendQuery, sendFollowUp } from '../api/chatApi';
 
 const styles = {
@@ -216,6 +217,7 @@ function ChatPage() {
   const [isFormVisible, setIsFormVisible] = useState(true);
   const [loaderStep, setLoaderStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const [toast, setToast] = useState(null);
   const messagesEndRef = useRef(null);
 
   const loaderSteps = [
@@ -241,6 +243,16 @@ function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type });
+  };
+
   const handleReset = () => {
     setMessages([]);
     setSources([]);
@@ -248,6 +260,7 @@ function ChatPage() {
     setFollowUpInput('');
     setIsFormVisible(true);
     setErrorMessage('');
+    showToast('Ready for a new research query.', 'success');
   };
 
   const handleSearchSubmit = async (formData) => {
@@ -262,9 +275,12 @@ function ChatPage() {
       setSources(response.sources || []);
       setChatId(response.chatId || null);
       setIsFormVisible(false);
+      showToast('Research query completed successfully.', 'success');
     } catch (error) {
       console.error('Error sending query:', error);
-      setErrorMessage(error.message || 'Unable to communicate with the backend.');
+      const message = error.message || 'Unable to communicate with the backend.';
+      setErrorMessage(message);
+      showToast(message, 'error');
       setMessages(prev => [
         ...prev,
         { role: 'assistant', text: 'Sorry, there was an error processing your request. Please try again.', time: new Date() }
@@ -287,9 +303,12 @@ function ChatPage() {
     try {
       const response = await sendFollowUp({ chatId, query: userMessage });
       setMessages(prev => [...prev, { role: 'assistant', text: response.answer || 'No answer returned from the server.', time: new Date() }]);
+      showToast('Follow-up answer received.', 'success');
     } catch (error) {
       console.error('Error sending follow-up:', error);
-      setErrorMessage(error.message || 'Unable to send follow-up question.');
+      const message = error.message || 'Unable to send follow-up question.';
+      setErrorMessage(message);
+      showToast(message, 'error');
       setMessages(prev => [...prev, { role: 'assistant', text: 'Sorry, there was an error processing your follow-up. Please try again.', time: new Date() }]);
     } finally {
       setLoading(false);
@@ -297,8 +316,8 @@ function ChatPage() {
   };
 
   return (
-    <div style={styles.app}>
-      <div style={styles.sidebar}>
+    <div className="app-container" style={styles.app}>
+      <div className="sidebar-panel" style={styles.sidebar}>
         <div style={styles.logo}>
           <div>
             <span style={styles.cura}>Cura</span>
@@ -310,7 +329,7 @@ function ChatPage() {
         <div style={styles.recentLabel}>RECENT</div>
       </div>
 
-      <div style={styles.mainArea}>
+      <div className="main-panel" style={styles.mainArea}>
         <div style={styles.navbar}>
           <div style={styles.logo}>
             <div>
@@ -325,7 +344,7 @@ function ChatPage() {
           </div>
         </div>
 
-        <div style={styles.messagesArea}>
+        <div className="messages-area" style={styles.messagesArea}>
           {errorMessage && <div style={styles.errorBox}>{errorMessage}</div>}
           {messages.length === 0 && !loading && (
             <div style={styles.emptyState}>
@@ -348,7 +367,7 @@ function ChatPage() {
         <SearchForm onSubmit={handleSearchSubmit} loading={loading} isVisible={isFormVisible} onToggle={setIsFormVisible} />
 
         {chatId && (
-          <div style={styles.followUpBar}>
+          <div className="follow-up-bar" style={styles.followUpBar}>
             <input
               type="text"
               value={followUpInput}
@@ -365,7 +384,7 @@ function ChatPage() {
         )}
       </div>
 
-      <div style={styles.sourcesPanel}>
+      <div className="sources-panel" style={styles.sourcesPanel}>
         <div style={styles.sourcesHeader}>
           <div style={styles.sourcesTitle}>Sources</div>
           <div style={styles.sourcesCount}>({sources.length})</div>
@@ -381,6 +400,11 @@ function ChatPage() {
           ))
         )}
       </div>
+      {toast && (
+        <div className="toast-container">
+          <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
+        </div>
+      )}
     </div>
   );
 }

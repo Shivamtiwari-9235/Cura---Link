@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const { expandQuery } = require('../utils/queryExpander')
 const { fetchPubMedArticles } = require('../services/pubmedService')
 const { fetchOpenAlexArticles } = require('../services/openalexService')
@@ -33,7 +34,10 @@ See attached sources for detailed information.`
 
 async function handleQuery(req, res) {
   try {
-    const { patientName, disease, query, location } = req.body
+    const patientName = String(req.body.patientName || '').trim()
+    const disease = String(req.body.disease || '').trim()
+    const query = String(req.body.query || '').trim()
+    const location = String(req.body.location || '').trim()
 
     if (!disease || !query) {
       return res.status(400).json({ error: 'Missing required fields: disease and query are required.' })
@@ -76,6 +80,7 @@ async function handleQuery(req, res) {
     const newChat = new Chat({
       disease,
       patientName: patientName || 'Patient',
+      location: location || '',
       messages: [
         { role: 'user', text: query, time: new Date() },
         { role: 'assistant', text: answer, time: new Date() }
@@ -97,13 +102,12 @@ async function handleQuery(req, res) {
 
 async function handleFollowUp(req, res) {
   try {
-    const { chatId, query } = req.body
+    const chatId = String(req.body.chatId || '').trim()
+    const query = String(req.body.query || '').trim()
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' })
     }
-
-    const Chat = require('../models/Chat')
 
     // Load previous chat to get disease context
     let disease = 'general health'
@@ -111,24 +115,17 @@ async function handleFollowUp(req, res) {
     let location = ''
     let previousContext = ''
 
-    if (chatId) {
+    const validChatId = chatId && mongoose.Types.ObjectId.isValid(chatId)
+    if (validChatId) {
       const previousChat = await Chat.findById(chatId)
       if (previousChat) {
         disease = previousChat.disease || 'general health'
         patientName = previousChat.patientName || 'Patient'
         location = previousChat.location || ''
-        // Get last 3 messages as context
         const lastMessages = previousChat.messages.slice(-3)
         previousContext = lastMessages.map(m => `${m.role}: ${m.text}`).join('\n')
       }
     }
-
-    const { expandQuery } = require('../utils/queryExpander')
-    const { rankResults } = require('../utils/rankingUtils')
-    const { fetchPubMedArticles } = require('../services/pubmedService')
-    const { fetchOpenAlexArticles } = require('../services/openalexService')
-    const { fetchClinicalTrials } = require('../services/trialsService')
-    const { generateLLMResponse } = require('../services/llmService')
 
     const expandedQuery = expandQuery(query, disease)
 
@@ -164,7 +161,7 @@ async function handleFollowUp(req, res) {
 
     // Save to existing chat or create new
     let chat
-    if (chatId) {
+    if (validChatId) {
       chat = await Chat.findByIdAndUpdate(
         chatId,
         {
@@ -179,10 +176,13 @@ async function handleFollowUp(req, res) {
         },
         { new: true }
       )
-    } else {
+    }
+
+    if (!chat) {
       chat = new Chat({
         disease,
         patientName,
+        location,
         messages: [
           { role: 'user', text: query, time: new Date() },
           { role: 'assistant', text: answer, time: new Date() }

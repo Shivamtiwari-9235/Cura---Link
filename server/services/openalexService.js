@@ -58,7 +58,7 @@ async function fetchOpenAlexArticles(expandedQuery, maxResults = 40) {
         : work?.primary_location?.landing_page_url || ''
 
       return {
-        type: 'publication',
+        type: 'openalex',
         title: work?.display_name || '',
         abstract: abstract.slice(0, 500),
         authors,

@@ -1,12 +1,12 @@
 # Curalink AI Medical Research Assistant
 
 ## Project Overview
-Curalink is an AI-powered medical research assistant that helps users explore medical research data from PubMed, OpenAlex, and ClinicalTrials.gov. It provides personalized insights based on patient context using a local Ollama model.
+Curalink is an AI-powered medical research assistant that helps users explore medical research data from PubMed, OpenAlex, and ClinicalTrials.gov. It provides personalized insights using a secure backend and managed AI completion service.
 
 ## Tech Stack
 - **Frontend**: React, Vite, Tailwind CSS
 - **Backend**: Node.js, Express, MongoDB
-- **AI**: Ollama with Mistral model
+- **AI**: Groq API chat completions
 - **APIs**: PubMed E-utilities, OpenAlex, ClinicalTrials.gov
 
 ## Setup Instructions
@@ -30,21 +30,16 @@ npm install
 ```
 
 ### 4. Environment Configuration
-Create a `.env` file at the project root or in the `server/` directory:
+Create a `.env` file in the `server/` directory and `client/.env` from the examples:
 ```
-PORT=5000
+# server/.env
+PORT=5001
 MONGO_URI=your_mongodb_connection_string
-OLLAMA_URL=http://localhost:11434/api/generate
-MODEL_NAME=mistral
-```
+GROQ_API_KEY=your_groq_api_key
+CORS_ORIGINS=https://cura-link-69v1.vercel.app,http://localhost:5173,http://127.0.0.1:5173
 
-### 5. Install Ollama
-Download and install Ollama from [https://ollama.ai](https://ollama.ai).
-
-### 6. Pull and Run Mistral Model
-```bash
-ollama pull mistral
-ollama run mistral
+# client/.env
+VITE_API_BASE_URL=http://localhost:5001
 ```
 
 ### 7. Root-Level Install and Start (Optional)
@@ -58,7 +53,7 @@ npm start
 ```
 
 This will start:
-- backend on `http://localhost:5000`
+- backend on `http://localhost:5001`
 - frontend on `http://localhost:5173`
 
 ### 8. Start the Application Manually
@@ -85,12 +80,11 @@ The frontend will run on `http://localhost:5173` and the backend should listen o
 | POST | `/api/chat/query` | Submit a new research query |
 | POST | `/api/chat/followup` | Send a follow-up question |
 | GET | `/api/health` | Health check endpoint |
-| GET | `/api/test` | Test backend availability |
 
 ## Notes
 
-- The frontend uses `http://localhost:5000` as the backend base URL.
-- The backend always returns JSON and includes robust error handling.
+- The frontend uses `VITE_API_BASE_URL` to configure backend API access.
+- The backend uses Helmet, compression, CORS restrictions, and rate limiting.
 - Required request body for `/api/chat/query`:
   - `patientName`
   - `disease`
