@@ -1,50 +1,39 @@
-import axios from 'axios';
+import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'https://cura-link-1rf0.onrender.com'
+
 const api = axios.create({
-  baseURL,
-  timeout: 30000,
+  baseURL: BACKEND_URL,
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
   }
-});
+})
+
+api.interceptors.request.use(config => {
+  console.log('API Request to:', config.baseURL + config.url)
+  return config
+})
 
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.data) {
-      return Promise.reject(new Error(error.response.data.error || error.response.data.message || 'API request failed'));
-    }
-    return Promise.reject(new Error(error.message || 'API request failed'));
+    const message = error.response?.data?.error || error.message || 'Request failed'
+    return Promise.reject(new Error(message))
   }
-);
+)
 
 export const sendQuery = async (data) => {
-  try {
-    const res = await api.post('/api/chat/query', data);
-    return res.data;
-  } catch (error) {
-    console.error('sendQuery error:', error);
-    throw error;
-  }
-};
+  const res = await api.post('/api/chat/query', data)
+  return res.data
+}
 
 export const sendFollowUp = async (data) => {
-  try {
-    const res = await api.post('/api/chat/followup', data);
-    return res.data;
-  } catch (error) {
-    console.error('sendFollowUp error:', error);
-    throw error;
-  }
-};
+  const res = await api.post('/api/chat/followup', data)
+  return res.data
+}
 
 export const getHistory = async (id) => {
-  try {
-    const res = await api.get(`/api/history/${id}`);
-    return res.data;
-  } catch (error) {
-    console.error('getHistory error:', error);
-    throw error;
-  }
-};
+  const res = await api.get(`/api/chat/history/${id}`)
+  return res.data
+}

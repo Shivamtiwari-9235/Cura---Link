@@ -1,83 +1,46 @@
-const mongoose = require('mongoose')
+const Chat = require('../models/Chat')
 const { expandQuery } = require('../utils/queryExpander')
+const { rankResults } = require('../utils/rankingUtils')
 const { fetchPubMedArticles } = require('../services/pubmedService')
 const { fetchOpenAlexArticles } = require('../services/openalexService')
 const { fetchClinicalTrials } = require('../services/trialsService')
 const { generateLLMResponse } = require('../services/llmService')
-const { rankResults } = require('../utils/rankingUtils')
-const Chat = require('../models/Chat')
 
-function generateFallbackAnswer(disease, query, topResults) {
-  const researchInsights = topResults.slice(0, 5).map(result => 
-    `- ${result.title || 'Research article'} (${result.year || 'N/A'})`
-  ).join('\n')
-
-  const clinicalTrials = topResults.filter(r => r.type === 'clinical_trial').slice(0, 3).map(trial =>
-    `- ${trial.title || 'Clinical trial'} (Status: ${trial.status || 'Unknown'})`
-  ).join('\n')
-
-  return `## Condition Overview
-${disease} is a medical condition. Based on available research data:
-
-## Research Insights
-${researchInsights || 'Limited research data available.'}
-
-## Clinical Trials
-${clinicalTrials || 'No clinical trials found.'}
-
-## Personalized Notes
-Please consult a medical professional for personalized advice.
-
-## Sources
-See attached sources for detailed information.`
-}
-
-async function handleQuery(req, res) {
+exports.handleQuery = async (req, res) => {
   try {
-    const patientName = String(req.body.patientName || '').trim()
-    const disease = String(req.body.disease || '').trim()
-    const query = String(req.body.query || '').trim()
-    const location = String(req.body.location || '').trim()
+    const { patientName, disease, query, location } = req.body
+    console.log('Processing query:', disease, query)
 
     if (!disease || !query) {
-      return res.status(400).json({ error: 'Missing required fields: disease and query are required.' })
+      return res.status(400).json({ error: 'Disease and query are required' })
     }
 
-    console.log('Processing query for disease: ' + disease)
     const expandedQuery = expandQuery(query, disease)
 
     const [pubmedResult, openalexResult, trialsResult] = await Promise.allSettled([
-      fetchPubMedArticles(expandedQuery, 10),
-      fetchOpenAlexArticles(expandedQuery, 10),
-      fetchClinicalTrials(disease, 5)
+      fetchPubMedArticles(expandedQuery, 40),
+      fetchOpenAlexArticles(expandedQuery, 40),
+      fetchClinicalTrials(disease, 20)
     ])
 
-    const pubmedArticles = pubmedResult.status === 'fulfilled' ? pubmedResult.value : []
-    const openalexArticles = openalexResult.status === 'fulfilled' ? openalexResult.value : []
-    const trials = trialsResult.status === 'fulfilled' ? trialsResult.value : []
+    const pubmedData = pubmedResult.status === 'fulfilled' ? pubmedResult.value : []
+    const openalexData = openalexResult.status === 'fulfilled' ? openalexResult.value : []
+    const trialsData = trialsResult.status === 'fulfilled' ? trialsResult.value : []
 
-    console.log(`PubMed returned ${pubmedArticles.length} results`)
-    console.log(`OpenAlex returned ${openalexArticles.length} results`)
-    console.log(`ClinicalTrials returned ${trials.length} results`)
+    console.log('PubMed:', pubmedData.length, 'OpenAlex:', openalexData.length, 'Trials:', trialsData.length)
 
-    const allResults = [...pubmedArticles, ...openalexArticles, ...trials]
+    const allResults = [...pubmedData, ...openalexData, ...trialsData]
     const topResults = rankResults(allResults, disease, query)
 
-    let answer
-    try {
-      answer = await generateLLMResponse(
-        patientName || 'Patient',
-        disease,
-        query,
-        location || 'Unknown',
-        topResults
-      )
-    } catch (llmError) {
-      console.error('LLM failed, using fallback:', llmError.message)
-      answer = generateFallbackAnswer(disease, query, topResults)
-    }
+    const answer = await generateLLMResponse(
+      patientName || 'Patient',
+      disease,
+      query,
+      location || '',
+      topResults
+    )
 
-    const newChat = new Chat({
+    const chat = new Chat({
       disease,
       patientName: patientName || 'Patient',
       location: location || '',
@@ -86,50 +49,47 @@ async function handleQuery(req, res) {
         { role: 'assistant', text: answer, time: new Date() }
       ]
     })
-    const savedChat = await newChat.save()
+    await chat.save()
 
-    return res.json({
+    res.json({
       answer,
       sources: topResults,
       expandedQuery,
-      chatId: savedChat._id
+      chatId: chat._id
     })
+
   } catch (error) {
-    console.error('Error in handleQuery:', error)
-    return res.status(500).json({ error: error.message })
+    console.error('handleQuery error:', error)
+    res.status(500).json({ error: error.message })
   }
 }
 
-async function handleFollowUp(req, res) {
+exports.handleFollowUp = async (req, res) => {
   try {
-    const chatId = String(req.body.chatId || '').trim()
-    const query = String(req.body.query || '').trim()
+    const { chatId, query } = req.body
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' })
     }
 
-    // Load previous chat to get disease context
     let disease = 'general health'
     let patientName = 'Patient'
     let location = ''
     let previousContext = ''
 
-    const validChatId = chatId && mongoose.Types.ObjectId.isValid(chatId)
-    if (validChatId) {
+    if (chatId) {
       const previousChat = await Chat.findById(chatId)
       if (previousChat) {
         disease = previousChat.disease || 'general health'
         patientName = previousChat.patientName || 'Patient'
         location = previousChat.location || ''
-        const lastMessages = previousChat.messages.slice(-3)
+        const lastMessages = previousChat.messages.slice(-4)
         previousContext = lastMessages.map(m => `${m.role}: ${m.text}`).join('\n')
       }
     }
 
     const expandedQuery = expandQuery(query, disease)
 
-    // Fetch fresh data
     const [pubmedResult, openalexResult, trialsResult] = await Promise.allSettled([
       fetchPubMedArticles(expandedQuery, 30),
       fetchOpenAlexArticles(expandedQuery, 30),
@@ -144,24 +104,20 @@ async function handleFollowUp(req, res) {
 
     const topResults = rankResults(allResults, disease, query)
 
-    // Generate answer with previous context
-    let answer
-    try {
-      answer = await generateLLMResponse(
-        patientName,
-        disease,
-        `Previous conversation:\n${previousContext}\n\nNew question: ${query}`,
-        location,
-        topResults
-      )
-    } catch (llmError) {
-      console.error('LLM failed, using fallback:', llmError.message)
-      answer = generateFallbackAnswer(disease, query, topResults)
-    }
+    const fullQuery = previousContext
+      ? `Previous conversation:\n${previousContext}\n\nNew question: ${query}`
+      : query
 
-    // Save to existing chat or create new
+    const answer = await generateLLMResponse(
+      patientName,
+      disease,
+      fullQuery,
+      location,
+      topResults
+    )
+
     let chat
-    if (validChatId) {
+    if (chatId) {
       chat = await Chat.findByIdAndUpdate(
         chatId,
         {
@@ -176,13 +132,10 @@ async function handleFollowUp(req, res) {
         },
         { new: true }
       )
-    }
-
-    if (!chat) {
+    } else {
       chat = new Chat({
         disease,
         patientName,
-        location,
         messages: [
           { role: 'user', text: query, time: new Date() },
           { role: 'assistant', text: answer, time: new Date() }
@@ -199,9 +152,7 @@ async function handleFollowUp(req, res) {
     })
 
   } catch (error) {
-    console.error('Follow-up error:', error)
+    console.error('handleFollowUp error:', error)
     res.status(500).json({ error: error.message })
   }
 }
-
-module.exports = { handleQuery, handleFollowUp }

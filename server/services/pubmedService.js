@@ -3,94 +3,73 @@ const xml2js = require('xml2js')
 
 async function fetchPubMedArticles(expandedQuery, maxResults = 40) {
   try {
-    const esearchUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi'
-    const esearchResponse = await axios.get(esearchUrl, {
-      timeout: 5000,
-      params: {
-        db: 'pubmed',
-        term: expandedQuery,
-        retmax: maxResults,
-        retmode: 'json',
-        sort: 'pub date'
+    const searchRes = await axios.get(
+      'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi',
+      {
+        params: {
+          db: 'pubmed',
+          term: expandedQuery,
+          retmax: maxResults,
+          retmode: 'json',
+          sort: 'pub date'
+        },
+        timeout: 15000
       }
-    })
+    )
 
-    const idlist = esearchResponse.data?.esearchresult?.idlist || []
-    if (idlist.length === 0) {
-      // Return mock data if no results
-      return [
-        {
-          type: 'publication',
-          title: 'Recent Advances in Medical Research',
-          abstract: 'This study explores recent developments in medical treatments.',
-          authors: ['Dr. John Doe'],
-          year: '2024',
-          source: 'PubMed',
-          url: 'https://pubmed.ncbi.nlm.nih.gov/'
-        }
-      ]
-    }
+    const ids = searchRes.data.esearchresult.idlist
+    if (!ids || ids.length === 0) return []
 
-    const ids = idlist.join(',')
-    const efetchUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi'
-    const efetchResponse = await axios.get(efetchUrl, {
-      timeout: 15000,
-      params: {
-        db: 'pubmed',
-        id: ids,
-        retmode: 'xml'
+    const fetchRes = await axios.get(
+      'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi',
+      {
+        params: {
+          db: 'pubmed',
+          id: ids.join(','),
+          retmode: 'xml'
+        },
+        timeout: 15000
       }
-    })
+    )
 
-    const parser = new xml2js.Parser()
-    const parsed = await parser.parseStringPromise(efetchResponse.data)
-    const pubmedArticles = parsed?.PubmedArticleSet?.PubmedArticle || []
-    const normalizedArticles = Array.isArray(pubmedArticles) ? pubmedArticles : [pubmedArticles]
+    const parsed = await xml2js.parseStringPromise(fetchRes.data)
+    const articles = parsed?.PubmedArticleSet?.PubmedArticle || []
 
-    return normalizedArticles.map(article => {
-      const medline = article?.MedlineCitation?.[0] || {}
-      const articleData = medline?.Article?.[0] || {}
-      const pmid = medline?.PMID?.[0]?._ || medline?.PMID?.[0] || ''
+    return articles.map(article => {
+      const medline = article?.MedlineCitation?.[0]
+      const articleData = medline?.Article?.[0]
+      const pmid = medline?.PMID?.[0]?._ || medline?.PMID?.[0]
+
       const title = articleData?.ArticleTitle?.[0] || ''
+      const abstractArr = articleData?.Abstract?.[0]?.AbstractText || []
+      const abstract = Array.isArray(abstractArr)
+        ? abstractArr.map(a => (typeof a === 'string' ? a : a._ || '')).join(' ')
+        : ''
 
-      let abstractText = ''
-      const abstractSection = articleData?.Abstract?.[0]?.AbstractText || []
-      if (Array.isArray(abstractSection)) {
-        abstractText = abstractSection
-          .map(text => (typeof text === 'object' ? text._ || '' : String(text)))
-          .join(' ')
-      } else if (typeof abstractSection === 'string') {
-        abstractText = abstractSection
-      }
-
-      const authors = []
       const authorList = articleData?.AuthorList?.[0]?.Author || []
-      const normalizedAuthorList = Array.isArray(authorList) ? authorList : [authorList]
-      for (const author of normalizedAuthorList) {
-        const lastName = author?.LastName?.[0] || ''
-        const foreName = author?.ForeName?.[0] || ''
-        if (lastName || foreName) {
-          authors.push(`${foreName} ${lastName}`.trim())
-        }
-      }
+      const authors = authorList.map(a => {
+        const last = a.LastName?.[0] || ''
+        const fore = a.ForeName?.[0] || ''
+        return `${last} ${fore}`.trim()
+      }).filter(Boolean)
 
-      const year =
-        articleData?.Journal?.[0]?.JournalIssue?.[0]?.PubDate?.[0]?.Year?.[0] ||
-        articleData?.Journal?.[0]?.JournalIssue?.[0]?.PubDate?.[0]?.MedlineDate?.[0] ||
-        ''
+      const year = medline?.Article?.[0]?.Journal?.[0]?.JournalIssue?.[0]?.PubDate?.[0]?.Year?.[0]
+        || medline?.DateCompleted?.[0]?.Year?.[0]
+        || '2024'
 
       return {
-        type: 'pubmed',
-        title,
-        abstract: abstractText.slice(0, 500),
+        type: 'publication',
+        title: typeof title === 'string' ? title : title._ || '',
+        abstract: abstract.substring(0, 500),
         authors,
-        year: String(year),
+        year,
         source: 'PubMed',
-        url: pmid ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}` : 'https://pubmed.ncbi.nlm.nih.gov/'
+        url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}`
       }
-    })
+    }).filter(a => a.title)
+
   } catch (error) {
-    console.error('Error fetching PubMed articles:', error.message || error)
+    console.error('PubMed error:', error.message)
     return []
   }
 }
