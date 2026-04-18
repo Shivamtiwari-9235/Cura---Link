@@ -6,6 +6,13 @@ const { fetchOpenAlexArticles } = require('../services/openalexService')
 const { fetchClinicalTrials } = require('../services/trialsService')
 const { generateLLMResponse } = require('../services/llmService')
 
+function generateFallbackAnswer(disease, query, topResults) {
+  const researchList = topResults.slice(0, 5).map(result => `- ${result.title || 'Research item'} (${result.source || 'Unknown'})`).join('\n')
+  const trialsList = topResults.filter(r => r.type === 'trial').slice(0, 3).map(trial => `- ${trial.title || 'Trial'} (${trial.status || 'Unknown'})`).join('\n')
+
+  return `## Condition Overview\n${disease} is a medical condition requiring review of the latest research and clinical trials.\n\n## Research Insights\n${researchList || 'No research items available currently.'}\n\n## Clinical Trials\n${trialsList || 'No clinical trials were found in the current search results.'}\n\n## Personalized Notes\nPlease review the sources below and consult a medical professional for personalized guidance.\n\n## Sources\n${topResults.map(src => `- ${src.title || 'Source'} (${src.year || 'N/A'}, ${src.source || 'Unknown'})`).join('\n')}`
+}
+
 exports.handleQuery = async (req, res) => {
   try {
     const { patientName, disease, query, location } = req.body
@@ -32,13 +39,19 @@ exports.handleQuery = async (req, res) => {
     const allResults = [...pubmedData, ...openalexData, ...trialsData]
     const topResults = rankResults(allResults, disease, query)
 
-    const answer = await generateLLMResponse(
-      patientName || 'Patient',
-      disease,
-      query,
-      location || '',
-      topResults
-    )
+    let answer
+    try {
+      answer = await generateLLMResponse(
+        patientName || 'Patient',
+        disease,
+        query,
+        location || '',
+        topResults
+      )
+    } catch (llmError) {
+      console.error('LLM generation error, using fallback answer:', llmError)
+      answer = generateFallbackAnswer(disease, query, topResults)
+    }
 
     const chat = new Chat({
       disease,
@@ -108,13 +121,19 @@ exports.handleFollowUp = async (req, res) => {
       ? `Previous conversation:\n${previousContext}\n\nNew question: ${query}`
       : query
 
-    const answer = await generateLLMResponse(
-      patientName,
-      disease,
-      fullQuery,
-      location,
-      topResults
-    )
+    let answer
+    try {
+      answer = await generateLLMResponse(
+        patientName,
+        disease,
+        fullQuery,
+        location,
+        topResults
+      )
+    } catch (llmError) {
+      console.error('LLM generation error, using fallback answer:', llmError)
+      answer = generateFallbackAnswer(disease, query, topResults)
+    }
 
     let chat
     if (chatId) {

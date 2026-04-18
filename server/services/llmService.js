@@ -1,5 +1,15 @@
 const axios = require('axios')
 
+const DEFAULT_GROQ_MODEL = 'llama3-8b'
+
+function chooseGroqModel() {
+  const configuredModel = process.env.GROQ_MODEL || ''
+  if (configuredModel && !/llama3-8b-8192/i.test(configuredModel)) {
+    return configuredModel
+  }
+  return DEFAULT_GROQ_MODEL
+}
+
 async function generateLLMResponse(patientName, disease, query, location, topResults) {
   try {
     console.log('Calling Groq API...')
@@ -42,6 +52,9 @@ Research Data:
 ${JSON.stringify(topResults, null, 2)}
 `
 
+    const model = chooseGroqModel()
+    console.log('Using Groq model:', model)
+
     const response = await axios({
       method: 'post',
       url: 'https://api.groq.com/openai/v1/chat/completions',
@@ -50,7 +63,7 @@ ${JSON.stringify(topResults, null, 2)}
         'Content-Type': 'application/json'
       },
       data: {
-        model: 'llama3-8b-8192',
+        model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 2048
@@ -58,12 +71,19 @@ ${JSON.stringify(topResults, null, 2)}
       timeout: 60000
     })
 
+    const content = response.data?.choices?.[0]?.message?.content
+    if (!content) {
+      console.error('Invalid Groq response:', response.data)
+      throw new Error('Invalid response from Groq API')
+    }
+
     console.log('Groq response received')
-    return response.data.choices[0].message.content
+    return content
 
   } catch (error) {
     console.error('Groq error:', error.response?.data || error.message)
-    throw new Error(`LLM Error: ${error.response?.data?.error?.message || error.message}`)
+    const groqError = error.response?.data?.error?.message || error.message
+    throw new Error(`LLM Error: ${groqError}`)
   }
 }
 
